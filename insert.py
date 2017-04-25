@@ -32,8 +32,8 @@ def main_loop():
         num_nonrecruiting = 0
         recruiting_in_range = 0
         with cnx.cursor() as cur:
-            with open(settings.test_recruiting_ids, "r") as recruiting_file:
-                with open(settings.test_nonrecruiting_ids, "a") as nonrecruiting_file:
+            with open(settings.recruiting_ids, "r") as recruiting_file:
+                with open(settings.nonrecruiting_ids, "a") as nonrecruiting_file:
                     cur.execute("USE university_twitter_data")
                     for line in recruiting_file:
                         cur.execute("SELECT * FROM twitter_collect WHERE tweetid = %s", (int(line),))
@@ -74,7 +74,7 @@ def main_loop():
                                 recruiting_in_range += 1
 
             if opts.do_insert:
-                with open(settings.test_nonrecruiting_ids, 'r') as file:
+                with open(settings.nonrecruiting_ids, 'r') as file:
                     for line in file:
                         id = int(line)
                         cur.execute("SELECT * FROM twitter_collect WHERE tweetid = %s", (id,))
@@ -89,12 +89,6 @@ def main_loop():
 
 
 
-
-        print("number recruiting tweets:\t\t" + str(len(recruiting_ids)))
-        print("number recruiting tweets in range:\t" + str(len(recruiting_ids)))
-
-        print("number nonrecruiting tweets:\t" + str(len(nonrecruiting_ids)))
-        print("number nonrecruiting tweets written:\t" + str(len(nonrecruiting_ids)))
         cnx.commit()
         cnx.close()
 
