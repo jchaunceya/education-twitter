@@ -12,8 +12,6 @@ op.add_option("--sep",
               help="Extract nontraining tweets from range of tweetids given extracted training tweets.")
 (opts, args) = op.parse_args()
 
-
-
 def main_loop():
     with SSHTunnelForwarder(
             'ucla.seanbeaton.com',
@@ -26,7 +24,6 @@ def main_loop():
 
         recruiting_ids = []
         nonrecruiting_ids = []
-
 
         to_insert = []
         num_nonrecruiting = 0
@@ -87,8 +84,6 @@ def main_loop():
 
         cnx.commit()
         cnx.close()
-
-
 
 if __name__ == "__main__":
     main_loop()
