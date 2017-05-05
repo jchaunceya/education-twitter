@@ -159,55 +159,10 @@ def main_loop():
             cber = confusion_matrix(test_targets, predictionsBer)
             print(cber)
 
-
-            correct_r = 0  # correctly categorized as recruiting
-            ignorable = 0 # false positive (ignore for now)
-
-            bad = 0 # BAD
-            correct_n = 0 # correctly categorized as nonrecruiting
-
-
-            badlist = []
-            goodlist = []
-            ignorelist = []
-            fplist = []
-
             for i in range(0, len(test_tweets)):
 
-                # Threshold of 2/3:
-
-                if predictionsRF[i] + predictionsSVM[i] + predictionsBer[i] >= 1:
-                    pred = 1
-                else:
-                    pred = 0
-
-                if pred == test_targets[i]:
-                    if pred == 0:
-                        correct_n += 1
-                    if pred == 1:
-                        correct_r += 1
-
-                else:
-                    if test_targets[i]:
-                        bad += 1
-                    else:
-                        ignorable += 1
-
-
-            results = []
-            results.append(str((correct_r + correct_n)/len(test_tweets)))
-            results.append(str((ignorable)/len(test_tweets)))
-            results.append(str(bad/len(test_tweets)))
-            results.append(str(proportion))
-            results.append(str(sum(training_targets)/len(training)))
-
-            with open("results.csv", "a") as csvfile:
-                csvfile.write(",".join(results) + '\n')
-            # print("Correct recruiting =\t" + str((correct_r + correct_n)/len(test_tweets)))
-            # print("Correct nonrecruiting =\t" + str(correct_n))
-            # print("False positives =\t" + str(correct_r))
-            # print("Bad =\t\t\t" + str(bad))
-            # print(correct_r * 100/(bad+correct_r))
+            # with open("results.csv", "a") as csvfile:
+            #     csvfile.write(",".join(results) + '\n')
 
             sql = "USE university_twitter_data"
 
@@ -253,13 +208,14 @@ def main_loop():
 
             tagged_tweets = []
             tagged_tweet_ids = []
+            name_ner = input("'s' for stanford, 'n' for nltk")
+
 
 
             for i in range(0, len(prediction_tweets)):
                 if prediction_ids[i] not in tweetids:
                     if predictionsRF[i] or predictionsSVM[i]:
                         tagged_tweet_ids.append(prediction_ids[i])
-
 
                         t = st.tag(nltk.word_tokenize(prediction_tweets[i]))
                         tagged_tweets.append(t)

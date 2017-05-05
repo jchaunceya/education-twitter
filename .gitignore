@@ -1,1 +1,3 @@
 settings.py
+/training_data/personal/*
+event_table.sql
