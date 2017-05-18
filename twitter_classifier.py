@@ -8,41 +8,54 @@ from sklearn.ensemble import RandomForestClassifier
 from sklearn.svm import LinearSVC
 from sklearn.preprocessing import Binarizer
 from sklearn.pipeline import Pipeline
-from sklearn import linear_model
-from sklearn import tree
 from sklearn.metrics import confusion_matrix
 from sshtunnel import SSHTunnelForwarder
 
-import numpy
-
 import nltk
-from nltk import SnowballStemmer
-
-#from nltk.tag import StanfordNERTagger
+# from nltk import SnowballStemmer
+#
+# from nltk.tag import StanfordNERTagger
 import re
 
 from optparse import OptionParser
 
+import ner
+
+from argparse import ArgumentParser
+
+parser = ArgumentParser(description='The range of tweetids to classify.')
+
+parser.add_argument('--c', action="store_true", dest='do_classify', default=False,
+                    help='Classify tweets from database. If not specified, will test on tweets from `twitter_learning.tweets`')
+
+parser.add_argument('integers', metavar='N', type=int, nargs='*',
+                    help='give the beginning id and ending id.')
+
+parser.add_argument('trainingprop', metavar='N', type=float, nargs='?', default=0.9,
+                    help='The proportion of training documents to test documents. If not specified, will be 0.9.')
+
+args1 = parser.parse_args()
+
 op = OptionParser()
+
 op.add_option("--range",
-              action="store_true", dest="do_range",
+              action="store_true", dest="do_range", default=False,
               help="Insert all ids into 'tweets' in twitter_learn.")
 
-(opts, args) = op.parse_args()
+(opts, args2) = op.parse_args()
 
-stemmer = SnowballStemmer('english', ignore_stopwords=True)
-
-#jar = "downloads/stanford-ner/stanford-ner.jar"
-#st = StanfordNERTagger('downloads/stanford-ner/classifiers/english.all.3class.distsim.crf.ser.gz', jar)
-
-
-def stem(text):
-    global stemmer
-    words = nltk.word_tokenize(text)
-    new = []
-    for word in words:
-        new.append(stemmer.stem(word))
-    return " ".join(new)
+# stemmer = SnowballStemmer('english', ignore_stopwords=True)
+#
+# jar = "downloads/stanford-ner/stanford-ner.jar"
+# st = StanfordNERTagger('downloads/stanford-ner/classifiers/english.all.3class.distsim.crf.ser.gz', jar)
+#
+# def stem(text):
+#     global stemmer
+#     words = nltk.word_tokenize(text)
+#     new = []
+#     for word in words:
+#         new.append(stemmer.stem(word))
+#     return " ".join(new)
 
 def clean(text):
 
@@ -51,41 +64,23 @@ def clean(text):
     text = re.sub("(https?://t\.co/\w+)", " ", text)
     text = re.sub("(#\w+)", " ", text)
     text = re.sub("(\s+)|(\n+)", " ", text)
-    print(text)
     return text
-
-
-class TwitterDataset:
-    def __init__(self, documents, targets):
-        self.documents = numpy.array(documents)
-        self.targets = numpy.array(targets)
-
-    def return_targets(self):
-        return self.targets
-
-    def return_documents(self):
-        return self.documents
-
-# the classifier object stores vectorizer, binarizer, training tweets and target tweets.
 
 def main_loop():
 
-    global st
+    if args1.do_classify and len(args1.integers) < 2:
+        print('You need to give two tweetids to classify a range!')
+        exit(1)
 
-    recruiting_ids = []
-    nonrecruiting_ids = []
+    # global st
 
     # each tweet at some index in `tweets` corresponds to the number at the same index
     # in targets: 1 if it is a recruiting tweet, and 0 if not.
 
-    training_tweets = []
-    training_targets = []
 
-    test_tweets = []
-    test_targets = []
-    proportion = .99
+    alltweets = []
+    alltargets = []
 
-    training = []
     # read each line from file, query database for that tweet
     with SSHTunnelForwarder(
             'ucla.seanbeaton.com',
@@ -96,31 +91,20 @@ def main_loop():
 
         cnx = pymysql.connect(**settings.db_config, cursorclass=pymysql.cursors.DictCursor)
         with cnx.cursor() as cur:
+
             sql = "SELECT * FROM tweets ORDER BY RAND()"
             cur.execute(sql)
             training = cur.fetchall()
-            percent = proportion * len(training)
+
             counter = 0
             tweetids = []
             for tweet in training:
                 tweetids.append(int(tweet['tweetid']))
-                if (counter < percent):
-                    training_tweets.append(clean(tweet['tweettext']))
-
-                    counter += 1
-                    if tweet['category'] == 'r' or tweet['category'] == 's':
-                        training_targets.append(1)
-                    else:
-                        training_targets.append(0)
+                alltweets.append(clean(tweet['tweettext']))
+                if tweet['category'] == 'r' or tweet['category'] == 's':
+                    alltargets.append(1)
                 else:
-                    test_tweets.append(clean(tweet['tweettext']))
-
-                    if tweet['category'] == 'r' or tweet['category'] == 's':
-                        test_targets.append(1)
-                    else:
-                        test_targets.append(0)
-
-
+                    alltargets.append(0)
 
             svm = Pipeline([
                 ("svmvec", TfidfVectorizer(min_df=1, stop_words='english', ngram_range=(1, 3))),
@@ -140,56 +124,54 @@ def main_loop():
                 ("clf_ber", BernoulliNB())
             ])
 
-            svm.fit(training_tweets, training_targets)
-            rf.fit(training_tweets, training_targets)
-            ber.fit(training_tweets, training_targets)
+            if not args1.do_classify:
+
+                proportion = int(args1.trainingprop * len(alltweets))
+
+                svm.fit(alltweets[:proportion], alltargets[:proportion])
+                rf.fit(alltweets[:proportion], alltargets[:proportion])
+                ber.fit(alltweets[:proportion], alltargets[:proportion])
 
 
-            predictionsSVM = svm.predict(test_tweets)
-            predictionsRF = rf.predict(test_tweets)
-            predictionsBer = ber.predict(test_tweets)
+                predictionsSVM = svm.predict(alltweets[proportion:])
+                predictionsRF = rf.predict(alltweets[proportion:])
+                predictionsBer = ber.predict(alltweets[proportion:])
 
-            csvm = confusion_matrix(test_targets, predictionsSVM)
-            print(csvm)
+                csvm = confusion_matrix(alltargets[proportion:], predictionsSVM)
+                print("Linear support vector classifier:")
+                print(csvm)
 
-            crf = confusion_matrix(test_targets, predictionsRF)
-            print(crf)
+                crf = confusion_matrix(alltargets[proportion:], predictionsRF)
+                print("Random forest classifier:")
+                print(crf)
 
-            cber = confusion_matrix(test_targets, predictionsBer)
-            print(cber)
+                cber = confusion_matrix(alltargets[proportion:], predictionsBer)
+                print("Bernoulli Naive Bayes:")
+                print(cber)
 
-            # with open("results.csv", "a") as csvfile:
-            #     csvfile.write(",".join(results) + '\n')
+                exit(0)
 
-            sql = "USE university_twitter_data"
+            svm.fit(alltweets, alltargets)
+            rf.fit(alltweets, alltargets)
+            ber.fit(alltweets, alltargets)
 
+            sql = "USE university_twitter_data;"
             cur.execute(sql)
-            if opts.do_range:
-                try:
-                    begin_id = int(input("Input beginning id: ")) - 1
-                    end_id = int(input("Input ending id: ")) + 1
 
-                except:
-                    print("invalid id")
-                    exit(1)
+            begin_id = args1.integers[0]
+            end_id = args1.integers[1]
 
-                if begin_id > end_id:
-                    temp = begin_id
-                    begin_id = end_id
-                    end_id = temp
 
-                try:
-                    cur.execute("SELECT * FROM twitter_collect WHERE tweetid > %s and tweetid < %s", (begin_id, end_id))
-                except Exception as e:
-                    print(e)
-                    exit(1)
-            else:
-                num = int(input("Input number of tweets:")) - 1
-                try:
-                    cur.execute("SELECT * FROM twitter_collect ORDER BY tweetid DESC LIMIT %s", (num,))
-                except Exception as e:
-                    print(e)
-                    exit(1)
+            if begin_id > end_id:
+                temp = begin_id
+                begin_id = end_id
+                end_id = temp
+
+            try:
+                cur.execute("SELECT * FROM twitter_collect WHERE tweetid > %s and tweetid < %s", (begin_id, end_id))
+            except Exception as e:
+                print(e)
+                exit(1)
 
             results = cur.fetchall()
             prediction_tweets = []
@@ -203,42 +185,10 @@ def main_loop():
             predictionsRF = rf.predict(prediction_tweets)
             predictionsBer = ber.predict(prediction_tweets)
 
-            tagged_tweets = []
-            tagged_tweet_ids = []
-            name_ner = input("'s' for stanford, 'n' for nltk")
-
-
-
             for i in range(0, len(prediction_tweets)):
                 if prediction_ids[i] not in tweetids:
-                    if predictionsRF[i] or predictionsSVM[i]:
-                        tagged_tweet_ids.append(prediction_ids[i])
-
-                        t = nltk.ne_chunk(nltk.word_tokenize(prediction_tweets[i]))
-                        tagged_tweets.append(t)
-
-                        print(str(prediction_ids[i]) + '\t\t' + prediction_tweets[i])
-                        print(t)
-            nes = []
-            currentchunk = []
-            currentcat = ""
-            last = ""
-
-            for t in tagged_tweets:
-                currentcat = t[0][1]
-                for word, cat in t:
-                    if cat != 'O' and cat == currentcat:
-                        currentchunk.append(word)
-                    else:
-                        if currentchunk:
-                            nes.append(" ".join(currentchunk))
-                            currentchunk = []
-                            currentcat = cat
-                        if (cat != 0):
-                            currentchunk.append(word)
-                print(nes[len(nes)-1])
-            for ne in nes:
-                print(ne)
+                    if predictionsSVM[i]:
+                        print(str(prediction_ids[i]) + ' ' + prediction_tweets[i])
 
         cnx.close()
 
